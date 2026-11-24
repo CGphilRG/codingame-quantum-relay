@@ -8,3 +8,6 @@ update_resp.json
 .DS_Store
 .idea/
 *.iml
+# Keep league Boss source code local-only (not pushed to public remote)
+config/Boss.java
+config/level*/Boss.java
