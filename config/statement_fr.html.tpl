@@ -163,7 +163,7 @@
     <h1><span class="icon icon-example">&nbsp;</span><span>Code Source &amp; Crédits</span></h1>
     <div class="statement-examples-text">
       <p>Le code source complet de l'arbitre (Referee), du viewer et des bots de référence est disponible sur GitHub :
-        <a href="https://github.com/codingame-team/codingame-quantum-relay" target="_blank" rel="noopener noreferrer">https://github.com/codingame-team/codingame-quantum-relay</a>
+        <a href="https://github.com/CGphilRG/codingame-quantum-relay" target="_blank" rel="noopener noreferrer">https://github.com/CGphilRG/codingame-quantum-relay</a>
       </p>
       <p><b>Crédits &amp; Inspiration :</b> Conception originale inspirée de l'optimisation de flots dans les réseaux et des jeux de stratégie spatiale à relais d'énergie. Développé avec le SDK officiel CodinGame Game Engine.</p>
     </div>
