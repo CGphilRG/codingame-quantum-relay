@@ -6,7 +6,7 @@ read pulsarCount:int
 loop pulsarCount read pulsarId:int px:int py:int energy:int regenRate:int
 read droneCount:int
 loop droneCount read droneId:int owner:int x:int y:int linkTarget:int cooldown:int
-write join("MOVE", "500", "450", "LINK", "-1")
+loop 3 write join("MOVE", "500", "450", "LINK", "-1")
 
 STATEMENT
 Deploy your quantum relay drones across deep space! Route unstable pulsar energy back to your Mothership through laser relay chains while cutting enemy beams.
