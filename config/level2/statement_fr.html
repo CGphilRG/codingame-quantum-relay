@@ -21,10 +21,15 @@
 
       <h3 style="font-size: 16px; font-weight: 700; padding-top: 10px">Ordre de Résolution d'un Tour</h3>
       <ol>
-        <li><b>Déplacement des Drones (<action>MOVE</action> <var>x</var> <var>y</var>) :</b> Chaque drone se déplace jusqu'à <const>120</const> unités par tour vers (<var>x</var>, <var>y</var>), dans les limites du secteur.</li>
-        <li><b>Liaisons Relais Laser (<action>LINK</action> <var>targetId</var>) :</b> Après déplacement, chaque drone projette un faisceau laser jusqu'à <const>480</const> unités vers son Vaisseau-Mère (<var>targetId</var> = <const>-1</const>) ou un autre drone allié (<var>targetId</var> = <var>droneId</var>). Débit par défaut : <const>6</const> énergie/tour.</li>
-        <li><b>Surcharge (<action>OVERCHARGE</action> <var>targetId</var>) :</b> Requiert <var>cooldown</var> = <const>0</const>. Le drone maintient sa position, se relie à <var>targetId</var> et porte la capacité de son faisceau à <const>12</const> énergie/tour pour ce tour (passe <var>cooldown</var> à <const>2</const>).</li>
-        <li><b>Récolte &amp; Flux d'Énergie :</b> Tout drone situé à moins de <const>200</const> unités d'un Pulsar disposant d'un chemin relais acyclique valide vers son Vaisseau-Mère y achemine l'énergie du Pulsar, limitée par la bande passante minimale restante du chemin. Les Pulsars régénèrent <const>3</const> à <const>5</const> d'énergie à la fin de chaque tour.</li>
+        <li><b>Déplacement des Drones (<action>MOVE</action> <var>x</var> <var>y</var>) :</b> Chaque drone se déplace en ligne droite jusqu'à <const>120</const> unités par tour vers (<var>x</var>, <var>y</var>), les coordonnées cibles étant bornées dans [<const>40</const>, <const>1560</const>] &times; [<const>40</const>, <const>860</const>]. Les drones, les Pulsars et les Vaisseaux-Mères n'entrent jamais en collision &mdash; plusieurs drones (d'une même équipe ou adverses), Pulsars et Vaisseaux-Mères peuvent occuper exactement les mêmes coordonnées.</li>
+        <li><b>Liaisons Relais Laser (<action>LINK</action> <var>targetId</var>) :</b> Après déplacement, chaque drone projette un faisceau laser rectiligne jusqu'à <const>480</const> unités vers son Vaisseau-Mère (<var>targetId</var> = <const>-1</const>) ou un autre drone allié (<var>targetId</var> = <var>droneId</var>). Débit par défaut : <const>6</const> énergie/tour. Une liaison s'applique <b>uniquement pour le tour en cours</b> (elle ne persiste pas aux tours suivants). Si <action>LINK</action> est omis, le drone se relie automatiquement à son Vaisseau-Mère s'il est à &le; <const>480</const> unités, sinon au drone allié à portée le plus proche du Vaisseau-Mère qui est strictement plus proche de ce dernier que lui-même, sinon aucune liaison (<const>-2</const>). Plusieurs drones d'une même équipe peuvent cibler la même destination, partageant l'unique bande passante sortante de ce drone cible ; les faisceaux alliés n'interfèrent jamais entre eux.</li>
+        <li><b>Surcharge (<action>OVERCHARGE</action> <var>targetId</var>) :</b> Requiert <var>cooldown</var> = <const>0</const>. Le drone maintient sa position, projette un faisceau vers <var>targetId</var> pour ce tour et porte la capacité de son faisceau à <const>12</const> énergie/tour (passe <var>cooldown</var> à <const>2</const>).</li>
+        <li><b>Récolte &amp; Flux d'Énergie :</b> Tout drone terminant à distance &le; <const>200</const> d'un Pulsar et disposant d'un chemin relais acyclique valide vers son Vaisseau-Mère y achemine l'énergie du Pulsar, limitée par la bande passante minimale restante du chemin :
+          <ul>
+            <li><b>Récolte simultanée :</b> Lorsque les deux équipes ont des drones connectés à moins de <const>200</const> unités du même Pulsar, elles récoltent <b>simultanément</b>. Si leur demande totale acheminable est &le; à l'énergie disponible du Pulsar, chaque équipe reçoit l'intégralité de sa demande. Sinon, chaque équipe reçoit <code>floor(energy * teamDemand / (demand0 + demand1))</code> (tout reste indivisible demeure dans le Pulsar), réparti entre les drones récolteurs de l'équipe sur ce Pulsar par <var>droneId</var> croissant.</li>
+            <li><b>Régénération des Pulsars &amp; Bascules de Flux Quantique :</b> Chaque Pulsar possède un taux de régénération (<var>regenRate</var>, de <const>2</const> à <const>6</const>, fourni en entrée à chaque tour) et se régénère en fin de tour jusqu'à son plafond (<const>65</const> pour le Pulsar central, <const>60</const> pour les autres). Au début des tours <const>21</const>, <const>41</const>, <const>61</const> et <const>81</const>, une <b>Bascule de Flux Quantique</b> symétrique permute les taux <var>regenRate</var> entre groupes de Pulsars et accorde un pic de <const>+10</const> d'énergie (dans la limite du plafond) aux Pulsars en sursaut (<var>regenRate</var> &ge; <const>5</const>).</li>
+          </ul>
+        </li>
       </ol>
       <p><b>Actions inexécutables :</b> Les commandes syntaxiquement valides mais inexécutables (par exemple relier une cible hors portée, inexistante, soi-même ou adverse, ou utiliser <action>OVERCHARGE</action> avec <var>cooldown</var> &gt; <const>0</const>) sont simplement ignorées et n'entraînent pas la défaite.</p>
 
@@ -72,14 +77,14 @@
       <div class="text">
         <p><span class="statement-lineno">Ligne 1 :</span> un entier <var>turn</var>, le numéro du tour courant (<const>1</const> à <const>100</const>).</p>
         <p><span class="statement-lineno">Ligne suivante :</span> un entier <var>pulsarCount</var>, le nombre de Pulsars dans le secteur.</p>
-        <p><span class="statement-lineno">Les <var>pulsarCount</var> lignes suivantes :</span> 4 entiers séparés par des espaces <var>pulsarId</var>, <var>px</var>, <var>py</var> et <var>energy</var>, l'identifiant, les coordonnées et l'énergie disponible de chaque Pulsar.</p>
+        <p><span class="statement-lineno">Les <var>pulsarCount</var> lignes suivantes :</span> 5 entiers séparés par des espaces <var>pulsarId</var>, <var>px</var>, <var>py</var>, <var>energy</var> et <var>regenRate</var>, l'identifiant, les coordonnées, l'énergie disponible et le taux de régénération par tour de chaque Pulsar.</p>
         <p><span class="statement-lineno">Ligne suivante :</span> un entier <var>droneCount</var>, le nombre total de Drones Relais.</p>
         <p><span class="statement-lineno">Les <var>droneCount</var> lignes suivantes :</span> 6 entiers séparés par des espaces <var>droneId</var>, <var>owner</var>, <var>x</var>, <var>y</var>, <var>linkTarget</var> et <var>cooldown</var> :</p>
         <ul>
           <li><var>droneId</var> : identifiant unique du drone.</li>
           <li><var>owner</var> : <const>0</const> si le drone vous appartient (vos drones sont toujours listés en premier), <const>1</const> s'il appartient à votre adversaire.</li>
           <li><var>x</var>, <var>y</var> : coordonnées actuelles du drone.</li>
-          <li><var>linkTarget</var> : cible relais actuelle (<const>-2</const> = aucune, <const>-1</const> = Vaisseau-Mère, ou un <var>droneId</var> allié).</li>
+          <li><var>linkTarget</var> : cible relais du tour précédent (<const>-2</const> = aucune, <const>-1</const> = Vaisseau-Mère, ou un <var>droneId</var> allié).</li>
           <li><var>cooldown</var> : nombre de tours restants avant de pouvoir réutiliser <action>OVERCHARGE</action>.</li>
         </ul>
       </div>
@@ -105,6 +110,8 @@
       <div class="text">
         <var>width</var> = <const>1600</const>, <var>height</var> = <const>900</const><br>
         <var>pulsarCount</var> = <const>5</const><br>
+        <const>0</const> &le; <var>energy</var> &le; <const>65</const><br>
+        <const>2</const> &le; <var>regenRate</var> &le; <const>6</const><br>
         <var>droneCount</var> = <const>6</const><br>
         Temps de réponse pour le premier tour &le; <const>1000</const> ms<br>
         Temps de réponse par tour &le; <const>50</const> ms<br>

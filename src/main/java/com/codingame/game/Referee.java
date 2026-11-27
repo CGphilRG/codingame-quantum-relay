@@ -38,6 +38,15 @@ public class Referee extends AbstractReferee {
     public static final int BASE_BANDWIDTH = 6;
     public static final int OVERCHARGE_BANDWIDTH = 12;
     public static final int OVERCHARGE_COOLDOWN = 2;
+    private static final double MIN_PULSAR_SPACING = 420.0;
+    private static final int[] FLUX_TURNS = {21, 41, 61, 81};
+    // {core (P0) regen, midline pair (P1-P2) regen, flank pair (P3-P4) regen}
+    private static final int[][] FLUX_SCHEDULE = {
+        {2, 6, 4},
+        {6, 2, 5},
+        {3, 5, 2},
+        {6, 3, 5}
+    };
 
     @Inject private MultiplayerGameManager<Player> gameManager;
     @Inject private GraphicEntityModule graphicEntityModule;
@@ -91,20 +100,43 @@ public class Referee extends AbstractReferee {
     private void generatePulsars(Random rng) {
         pulsars.clear();
         int pid = 0;
-        // Central high-capacity Megapulsar
-        pulsars.add(new Pulsar(pid++, SECTOR_WIDTH / 2, SECTOR_HEIGHT / 2, 110, 130, 5));
+        // 0: Central high-yield core Pulsar
+        Pulsar core = new Pulsar(pid++, SECTOR_WIDTH / 2, SECTOR_HEIGHT / 2, 36, 65, 5);
+        pulsars.add(core);
 
-        // Inner contested pair of Pulsars near the center midline
-        int x1 = 650 + rng.nextInt(90);
-        int y1 = 190 + rng.nextInt(110);
-        pulsars.add(new Pulsar(pid++, x1, y1, 80, 95, 4));
-        pulsars.add(new Pulsar(pid++, SECTOR_WIDTH - x1, SECTOR_HEIGHT - y1, 80, 95, 4));
+        // 1 & 2: Midline contested symmetric pair
+        int x1 = 760 + rng.nextInt(80);
+        int y1 = 155 + rng.nextInt(75);
+        Pulsar p1 = new Pulsar(pid++, x1, y1, 30, 60, 4);
+        Pulsar p2 = new Pulsar(pid++, SECTOR_WIDTH - x1, SECTOR_HEIGHT - y1, 30, 60, 4);
+        pulsars.add(p1);
+        pulsars.add(p2);
 
-        // Outer accessible pair of Pulsars
-        int x2 = 460 + rng.nextInt(110);
-        int y2 = 590 + rng.nextInt(120);
-        pulsars.add(new Pulsar(pid++, x2, y2, 60, 75, 3));
-        pulsars.add(new Pulsar(pid++, SECTOR_WIDTH - x2, SECTOR_HEIGHT - y2, 60, 75, 3));
+        // 3 & 4: Flank capacitor pair with guaranteed >= 420px spacing from all other Pulsars
+        int x2 = 500;
+        int y2 = 620;
+        for (int attempt = 0; attempt < 50; attempt++) {
+            int cx = 460 + rng.nextInt(110);
+            int cy = 220 + rng.nextInt(460);
+            int mx = SECTOR_WIDTH - cx;
+            int my = SECTOR_HEIGHT - cy;
+            if (Geometry.dist(cx, cy, mx, my) < MIN_PULSAR_SPACING) continue;
+            boolean ok = true;
+            for (Pulsar existing : pulsars) {
+                if (Geometry.dist(cx, cy, existing.getX(), existing.getY()) < MIN_PULSAR_SPACING
+                    || Geometry.dist(mx, my, existing.getX(), existing.getY()) < MIN_PULSAR_SPACING) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) {
+                x2 = cx;
+                y2 = cy;
+                break;
+            }
+        }
+        pulsars.add(new Pulsar(pid++, x2, y2, 48, 60, 2));
+        pulsars.add(new Pulsar(pid++, SECTOR_WIDTH - x2, SECTOR_HEIGHT - y2, 48, 60, 2));
     }
 
     private void spawnDrones(Player p0, Player p1) {
@@ -283,12 +315,12 @@ public class Referee extends AbstractReferee {
                 .setBaseWidth(66)
                 .setBaseHeight(66);
 
-            Text eTxt = graphicEntityModule.createText(String.valueOf(pulsar.getEnergy()))
+            Text eTxt = graphicEntityModule.createText(pulsar.getEnergy() + " (+" + pulsar.getRegenRate() + ")")
                 .setY(-48)
                 .setAnchor(0.5)
                 .setFontFamily("Lato")
-                .setFontSize(36)
-                .setFillColor(0x7ee787)
+                .setFontSize(30)
+                .setFillColor(getPulsarTextColor(pulsar.getRegenRate()))
                 .setStrokeThickness(3)
                 .setStrokeColor(0x000000);
 
@@ -380,6 +412,12 @@ public class Referee extends AbstractReferee {
         }
     }
 
+    private int getPulsarTextColor(int regenRate) {
+        if (regenRate >= 5) return 0xffd54f;
+        if (regenRate >= 3) return 0x7ee787;
+        return 0x90a4ae;
+    }
+
     private void updatePulsarTooltip(Pulsar p) {
         tooltipModule.setTooltipText(p.getGroup(),
             String.format("Pulsar %d\nPos: (%d, %d)\nEnergy: %d / %d (+%d/turn)",
@@ -396,6 +434,7 @@ public class Referee extends AbstractReferee {
     @Override
     public void gameTurn(int turn) {
         turnText.setText("TURN " + turn + " / " + MAX_TURNS);
+        applyFluxShift(turn);
 
         for (Drone d : allDrones) {
             d.setCooldown(d.getCooldown() - 1);
@@ -440,13 +479,35 @@ public class Referee extends AbstractReferee {
         checkEarlyEnd(turn);
     }
 
+    private void applyFluxShift(int turn) {
+        for (int k = 0; k < FLUX_TURNS.length; k++) {
+            if (FLUX_TURNS[k] == turn) {
+                int coreRegen = FLUX_SCHEDULE[k][0];
+                int innerRegen = FLUX_SCHEDULE[k][1];
+                int flankRegen = FLUX_SCHEDULE[k][2];
+                for (int i = 0; i < pulsars.size(); i++) {
+                    Pulsar p = pulsars.get(i);
+                    int nextRegen = (i == 0) ? coreRegen : (i <= 2 ? innerRegen : flankRegen);
+                    p.setRegenRate(nextRegen);
+                    if (nextRegen >= 5) {
+                        p.addEnergy(10);
+                    }
+                }
+                gameManager.addToGameSummary(GameManager.formatSuccessMessage(
+                    String.format("Turn %d Quantum Flux Shift! Regen rates -> Core:+%d Mid:+%d Flanks:+%d (+10 surge on +5/+6)",
+                        turn, coreRegen, innerRegen, flankRegen)));
+                return;
+            }
+        }
+    }
+
     private void sendTurnInput(Player player, int turn) {
         int myIdx = player.getIndex();
         player.sendInputLine(String.valueOf(turn));
         player.sendInputLine(String.valueOf(pulsars.size()));
         for (Pulsar p : pulsars) {
-            player.sendInputLine(String.format("%d %d %d %d",
-                p.getId(), p.getX(), p.getY(), p.getEnergy()));
+            player.sendInputLine(String.format("%d %d %d %d %d",
+                p.getId(), p.getX(), p.getY(), p.getEnergy(), p.getRegenRate()));
         }
 
         List<Drone> ordered = new ArrayList<>();
@@ -720,38 +781,77 @@ public class Referee extends AbstractReferee {
             p.setLastTurnFlow(0);
         }
 
-        // Route energy from each Pulsar through connected harvesting drones
+        // Route energy simultaneously and symmetrically from each Pulsar through connected relay trees
         for (Pulsar pulsar : pulsars) {
             if (pulsar.getEnergy() <= 0) continue;
 
+            List<List<Drone>> teamHarvesters = List.of(new ArrayList<>(), new ArrayList<>());
             for (Drone d : allDrones) {
-                if (pulsar.getEnergy() <= 0) break;
-                double dist = Geometry.dist(d.getX(), d.getY(), pulsar.getX(), pulsar.getY());
-                if (dist > HARVEST_RANGE) continue;
-
-                List<Drone> path = getPathToMothership(d);
-                if (path == null) continue;
-
-                int bottleneck = pulsar.getEnergy();
-                for (Drone hop : path) {
-                    bottleneck = Math.min(bottleneck, remainingCap.get(hop));
+                if (Geometry.dist(d.getX(), d.getY(), pulsar.getX(), pulsar.getY()) <= HARVEST_RANGE) {
+                    teamHarvesters.get(d.getOwner().getIndex()).add(d);
                 }
+            }
 
-                if (bottleneck > 0) {
-                    pulsar.setEnergy(pulsar.getEnergy() - bottleneck);
+            int[] demand = new int[2];
+            for (int idx = 0; idx < 2; idx++) {
+                Map<Drone, Integer> simCap = new HashMap<>(remainingCap);
+                for (Drone d : teamHarvesters.get(idx)) {
+                    List<Drone> path = getPathToMothership(d);
+                    if (path == null) continue;
+                    int flow = Integer.MAX_VALUE;
                     for (Drone hop : path) {
-                        remainingCap.put(hop, remainingCap.get(hop) - bottleneck);
+                        flow = Math.min(flow, simCap.get(hop));
                     }
-                    Player owner = d.getOwner();
-                    owner.setScore(owner.getScore() + bottleneck);
-                    owner.setLastTurnFlow(owner.getLastTurnFlow() + bottleneck);
+                    if (flow > 0) {
+                        demand[idx] += flow;
+                        for (Drone hop : path) {
+                            simCap.put(hop, simCap.get(hop) - flow);
+                        }
+                    }
+                }
+            }
 
-                    d.getHarvestLine()
-                        .setX(toViewX(d.getX()))
-                        .setY(toViewY(d.getY()))
-                        .setX2(toViewX(pulsar.getX()))
-                        .setY2(toViewY(pulsar.getY()))
-                        .setVisible(true);
+            int totalDemand = demand[0] + demand[1];
+            if (totalDemand <= 0) continue;
+
+            int[] alloc = new int[2];
+            int available = pulsar.getEnergy();
+            if (totalDemand <= available) {
+                alloc[0] = demand[0];
+                alloc[1] = demand[1];
+            } else {
+                alloc[0] = (available * demand[0]) / totalDemand;
+                alloc[1] = (available * demand[1]) / totalDemand;
+            }
+
+            for (int idx = 0; idx < 2; idx++) {
+                int left = alloc[idx];
+                if (left <= 0) continue;
+                for (Drone d : teamHarvesters.get(idx)) {
+                    if (left <= 0) break;
+                    List<Drone> path = getPathToMothership(d);
+                    if (path == null) continue;
+                    int flow = left;
+                    for (Drone hop : path) {
+                        flow = Math.min(flow, remainingCap.get(hop));
+                    }
+                    if (flow > 0) {
+                        pulsar.setEnergy(pulsar.getEnergy() - flow);
+                        left -= flow;
+                        for (Drone hop : path) {
+                            remainingCap.put(hop, remainingCap.get(hop) - flow);
+                        }
+                        Player owner = d.getOwner();
+                        owner.setScore(owner.getScore() + flow);
+                        owner.setLastTurnFlow(owner.getLastTurnFlow() + flow);
+
+                        d.getHarvestLine()
+                            .setX(toViewX(d.getX()))
+                            .setY(toViewY(d.getY()))
+                            .setX2(toViewX(pulsar.getX()))
+                            .setY2(toViewY(pulsar.getY()))
+                            .setVisible(true);
+                    }
                 }
             }
         }
@@ -763,7 +863,9 @@ public class Referee extends AbstractReferee {
             p.getFlowText().setText("+" + p.getLastTurnFlow() + "/t");
         }
         for (Pulsar pulsar : pulsars) {
-            pulsar.getEnergyText().setText(String.valueOf(pulsar.getEnergy()));
+            pulsar.getEnergyText()
+                .setText(pulsar.getEnergy() + " (+" + pulsar.getRegenRate() + ")")
+                .setFillColor(getPulsarTextColor(pulsar.getRegenRate()));
             updatePulsarTooltip(pulsar);
         }
         for (Drone d : allDrones) {

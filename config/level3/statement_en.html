@@ -21,16 +21,21 @@
 
       <h3 style="font-size: 16px; font-weight: 700; padding-top: 10px">Turn Resolution Order</h3>
       <ol>
-        <li><b>Drone Movement (<action>MOVE</action> <var>x</var> <var>y</var>):</b> Each drone moves up to <const>120</const> units per turn toward (<var>x</var>, <var>y</var>), clamped to the sector bounds.</li>
-        <li><b>Laser Relay Links (<action>LINK</action> <var>targetId</var>):</b> After movement, each drone projects one outgoing laser beam up to <const>480</const> units to either its Mothership (<var>targetId</var> = <const>-1</const>) or another friendly drone (<var>targetId</var> = <var>droneId</var>). Default bandwidth is <const>6</const> energy/turn.</li>
-        <li><b>Overcharge (<action>OVERCHARGE</action> <var>targetId</var>):</b> Requires <var>cooldown</var> = <const>0</const>. The drone holds its current position, links to <var>targetId</var>, and boosts its outgoing beam capacity to <const>12</const> energy/turn for this turn (sets <var>cooldown</var> to <const>2</const>).</li>
-        <li><b>Quantum Beam Interference:</b> If a player's active beam segment geometrically intersects an opponent's active beam segment:
+        <li><b>Drone Movement (<action>MOVE</action> <var>x</var> <var>y</var>):</b> Each drone moves in a straight line up to <const>120</const> units per turn toward (<var>x</var>, <var>y</var>), with target coordinates clamped to [<const>40</const>, <const>1560</const>] &times; [<const>40</const>, <const>860</const>]. Drones, Pulsars, and Motherships never collide &mdash; multiple drones (from the same or opposing teams), Pulsars, and Motherships can occupy the exact same coordinates.</li>
+        <li><b>Laser Relay Links (<action>LINK</action> <var>targetId</var>):</b> After movement, each drone projects one straight-line outgoing laser beam up to <const>480</const> units to either its Mothership (<var>targetId</var> = <const>-1</const>) or another friendly drone (<var>targetId</var> = <var>droneId</var>). Default bandwidth is <const>6</const> energy/turn. A link applies <b>only for the current turn</b> (it does not persist into subsequent turns). If <action>LINK</action> is omitted, the drone automatically links to its Mothership if within <const>480</const> units, else to the closest-to-Mothership in-range friendly drone that is strictly closer to the Mothership than itself, else no link (<const>-2</const>). Multiple drones on the same team can link to the same target, sharing that target drone's single outgoing bandwidth; friendly beams never interfere with each other.</li>
+        <li><b>Overcharge (<action>OVERCHARGE</action> <var>targetId</var>):</b> Requires <var>cooldown</var> = <const>0</const>. The drone holds its current position, projects a beam to <var>targetId</var> for the current turn, and boosts its outgoing beam capacity to <const>12</const> energy/turn (sets <var>cooldown</var> to <const>2</const>).</li>
+        <li><b>Quantum Beam Interference:</b> If a player's active beam segment geometrically intersects an opponent's active beam segment (excluding beams that share an exact endpoint):
           <ul>
-            <li><b>Normal vs Normal (or Overcharged vs Overcharged):</b> Both beams short out (<const>0</const> effective bandwidth).</li>
-            <li><b>Overcharged vs Normal:</b> The normal beam is severed (<const>0</const> bandwidth), while the Overcharged beam retains <const>6</const> bandwidth!</li>
+            <li><b>Normal vs Normal, or Overcharged vs Overcharged:</b> Both beams short out (<const>0</const> effective bandwidth).</li>
+            <li><b>Overcharged vs Normal:</b> The normal beam is severed (<const>0</const> bandwidth), while the Overcharged beam's bandwidth is halved to <const>6</const>! (Crossing additional Normal enemy beams keeps it at <const>6</const>, whereas crossing any Overcharged enemy beam reduces it to <const>0</const>.)</li>
           </ul>
         </li>
-        <li><b>Energy Harvesting &amp; Flow:</b> Any drone within <const>200</const> units of a Pulsar that has a valid acyclic relay path to its Mothership routes energy from that Pulsar to the Mothership, constrained by the minimum remaining bandwidth along its relay path. Pulsars regenerate <const>3</const> to <const>5</const> energy at the end of each turn.</li>
+        <li><b>Energy Harvesting &amp; Flow:</b> Any drone ending within <const>200</const> units of a Pulsar that has a valid acyclic relay path to its Mothership routes energy from that Pulsar to its Mothership, constrained by the minimum remaining bandwidth along its relay path:
+          <ul>
+            <li><b>Simultaneous Harvesting:</b> When opposing teams both have connected harvesters within <const>200</const> units of the same Pulsar, they harvest <b>simultaneously</b>. If their combined deliverable demand is &le; the Pulsar's available energy, both receive their full demand. Otherwise, each team receives <code>floor(energy * teamDemand / (demand0 + demand1))</code> (any indivisible remainder stays in the Pulsar), distributed across that team's harvesters at that Pulsar in ascending <var>droneId</var> order.</li>
+            <li><b>Pulsar Regeneration &amp; Quantum Flux Shifts:</b> Each Pulsar has a fixed or shifting regeneration rate (<var>regenRate</var>, <const>2</const> to <const>6</const>, given in the turn input) and regenerates at the end of each turn up to its cap (<const>65</const> for the central Pulsar, <const>60</const> for the others). At the start of turns <const>21</const>, <const>41</const>, <const>61</const>, and <const>81</const>, a symmetric <b>Quantum Flux Shift</b> rotates <var>regenRate</var> values across Pulsar groups and grants a <const>+10</const> energy surge (up to max cap) to surging Pulsars (<var>regenRate</var> &ge; <const>5</const>).</li>
+          </ul>
+        </li>
       </ol>
       <p><b>Unexecutable Actions:</b> Syntactically valid actions that cannot be executed (such as linking to an out-of-range, nonexistent, self, or opposing target, or using <action>OVERCHARGE</action> while <var>cooldown</var> &gt; <const>0</const>) are simply ignored and do not cause defeat.</p>
 
@@ -78,14 +83,14 @@
       <div class="text">
         <p><span class="statement-lineno">Line 1:</span> an integer <var>turn</var>, the current turn number (<const>1</const> to <const>100</const>).</p>
         <p><span class="statement-lineno">Next line:</span> an integer <var>pulsarCount</var>, the number of Pulsars in the sector.</p>
-        <p><span class="statement-lineno">Next <var>pulsarCount</var> lines:</span> 4 space-separated integers <var>pulsarId</var>, <var>px</var>, <var>py</var> and <var>energy</var>, the unique identifier, coordinates, and currently stored energy of each Pulsar.</p>
+        <p><span class="statement-lineno">Next <var>pulsarCount</var> lines:</span> 5 space-separated integers <var>pulsarId</var>, <var>px</var>, <var>py</var>, <var>energy</var> and <var>regenRate</var>, the unique identifier, coordinates, currently available energy, and end-of-turn energy regeneration rate of each Pulsar.</p>
         <p><span class="statement-lineno">Next line:</span> an integer <var>droneCount</var>, the total number of Relay Drones.</p>
         <p><span class="statement-lineno">Next <var>droneCount</var> lines:</span> 6 space-separated integers <var>droneId</var>, <var>owner</var>, <var>x</var>, <var>y</var>, <var>linkTarget</var> and <var>cooldown</var>:</p>
         <ul>
           <li><var>droneId</var>: unique identifier of the drone.</li>
           <li><var>owner</var>: <const>0</const> if you own this drone (your drones are always listed first), <const>1</const> if owned by your opponent.</li>
           <li><var>x</var>, <var>y</var>: current coordinates of the drone.</li>
-          <li><var>linkTarget</var>: current relay target (<const>-2</const> for none, <const>-1</const> for Mothership, or a friendly <var>droneId</var>).</li>
+          <li><var>linkTarget</var>: relay target from the previous turn (<const>-2</const> for none, <const>-1</const> for Mothership, or a friendly <var>droneId</var>).</li>
           <li><var>cooldown</var>: turns remaining before <action>OVERCHARGE</action> is available again.</li>
         </ul>
       </div>
@@ -111,6 +116,8 @@
       <div class="text">
         <var>width</var> = <const>1600</const>, <var>height</var> = <const>900</const><br>
         <var>pulsarCount</var> = <const>5</const><br>
+        <const>0</const> &le; <var>energy</var> &le; <const>65</const><br>
+        <const>2</const> &le; <var>regenRate</var> &le; <const>6</const><br>
         <var>droneCount</var> = <const>6</const><br>
         Response time for first turn &le; <const>1000</const> ms<br>
         Response time for one turn &le; <const>50</const> ms<br>

@@ -11,7 +11,7 @@ public class Pulsar {
     private final int y;
     private int energy;
     private final int maxEnergy;
-    private final int regenRate;
+    private int regenRate;
 
     private Group group;
     private Sprite sprite;
@@ -29,6 +29,10 @@ public class Pulsar {
 
     public void regenerate() {
         this.energy = Math.min(maxEnergy, this.energy + regenRate);
+    }
+
+    public void addEnergy(int delta) {
+        this.energy = Math.max(0, Math.min(maxEnergy, this.energy + delta));
     }
 
     public int getId() {
@@ -57,6 +61,10 @@ public class Pulsar {
 
     public int getRegenRate() {
         return regenRate;
+    }
+
+    public void setRegenRate(int regenRate) {
+        this.regenRate = regenRate;
     }
 
     public Group getGroup() {

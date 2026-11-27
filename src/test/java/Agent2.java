@@ -16,7 +16,7 @@ public class Agent2 {
             int pulsarCount = in.nextInt();
             List<int[]> pulsars = new ArrayList<>();
             for (int i = 0; i < pulsarCount; i++) {
-                pulsars.add(new int[]{in.nextInt(), in.nextInt(), in.nextInt(), in.nextInt()});
+                pulsars.add(new int[]{in.nextInt(), in.nextInt(), in.nextInt(), in.nextInt(), in.nextInt()});
             }
             int droneCount = in.nextInt();
             List<int[]> myDrones = new ArrayList<>();
@@ -26,10 +26,15 @@ public class Agent2 {
                 if (owner == 0) myDrones.add(new int[]{id, x, y, link, cd});
             }
 
-            pulsars.sort(Comparator.comparingDouble(p -> Math.hypot(p[1] - myBaseX, p[2] - myBaseY)));
+            pulsars.sort((a, b) -> {
+                double sa = a[3] * 1.4 + a[4] * 6.0 - Math.hypot(a[1] - myBaseX, a[2] - myBaseY) * 0.05;
+                double sb = b[3] * 1.4 + b[4] * 6.0 - Math.hypot(b[1] - myBaseX, b[2] - myBaseY) * 0.05;
+                return Double.compare(sb, sa);
+            });
+
             int trunkId = myDrones.get(0)[0];
             int dir = (myBaseX < width / 2) ? 1 : -1;
-            int trunkX = myBaseX + dir * 320;
+            int trunkX = myBaseX + dir * 350;
             int trunkY = myBaseY;
 
             for (int i = 0; i < myDrones.size(); i++) {
@@ -45,8 +50,8 @@ public class Agent2 {
                     double distPToTrunk = Math.hypot(targetP[1] - trunkX, targetP[2] - trunkY);
                     int hx = targetP[1];
                     int hy = targetP[2];
-                    if (distPToTrunk > 150) {
-                        double r = 150.0 / distPToTrunk;
+                    if (distPToTrunk > 175) {
+                        double r = 175.0 / distPToTrunk;
                         hx = (int) Math.round(targetP[1] + (trunkX - targetP[1]) * r);
                         hy = (int) Math.round(targetP[2] + (trunkY - targetP[2]) * r);
                     }
